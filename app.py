@@ -44,6 +44,7 @@ strl.markdown("""
 
 # Title Header
 strl.markdown('<div class="terminal-title">JARVIS AI ONLINE SYSTEM</div>', unsafe_allow_html=True)
+
 # ================= GEMINI CONFIGURATION =================
 if "GEMINI_API_KEY" in strl.secrets:
     api_key = strl.secrets["GEMINI_API_KEY"]
@@ -132,8 +133,16 @@ strl.markdown(f'<div class="chat-box">{strl.session_state.chat_history}</div>', 
 
 # ================= CORE PROCESSOR =================
 def process_command(command):
-    if not command or strl.session_state.get("last_processed_query") == command:
+    # Agar command khali hai, ya wahi purani command baar-baar aa rahi hai toh ruk jao
+    if not command or command.strip() == "":
         return
+        
+    # Pehle hi check karlo ki kya yeh query abhi-abhi process hui hai?
+    if strl.session_state.get("last_processed_query") == command:
+        return
+
+    # Ab save karo ki hum isko process kar rahe hain taaki duplicate requests na jayein
+    strl.session_state.last_processed_query = command
         
     strl.session_state.chat_history += f"\n\nYou: {command}"
     cmd = command.lower().strip()
@@ -160,7 +169,7 @@ def process_command(command):
     # 3. GEMINI CORE RESPONSE
     else:
         if not ai_client:
-            reply = "Sir, Gemini API Key core component missing configuration. Please check your secrets or environment variables."
+            reply = "Sir, Gemini API Key core component missing configuration."
             strl.session_state.chat_history += f"\n\nJarvis: {reply}"
             strl.session_state.tts_text = reply
         else:
@@ -176,15 +185,23 @@ def process_command(command):
                 strl.session_state.chat_history += f"\n\nJarvis: {reply}"
                 strl.session_state.tts_text = reply
             except Exception as e:
-                # Debugging print to terminal console to see the actual error
                 print(f"Gemini API Error: {e}")
-                reply = f"Sir, I faced an error connecting to the AI core. Details: {str(e)[:50]}..."
+                # Agar 429 error aaye toh user ko clear batao ki unka code sahi hai, bas server busy hai
+                if "429" in str(e):
+                    reply = "Sir, Streamlit Cloud servers are currently facing high traffic with Gemini API. Please try again in a few seconds."
+                else:
+                    reply = f"Sir, I faced an error connecting to the AI core. Details: {str(e)[:30]}"
                 strl.session_state.chat_history += f"\n\nJarvis: {reply}"
-                strl.session_state.tts_text = "Apologies Sir, server error."
+                strl.session_state.tts_text = "Apologies Sir, server is busy."
 
-    strl.session_state.last_processed_query = command
+  # ================= VOICE INPUT HANDLER =================
+# Yeh block check karega ki koi nayi voice query aayi hai ya nahi
+if 'voice_query' in locals() and voice_query and voice_query != strl.session_state.get("last_processed_query", ""):
+    st_status.markdown('<div class="terminal-status">Status: Processing Command...</div>', unsafe_allow_html=True)
+    process_command(voice_query)
+    strl.rerun()
 
-# --- Input Box & Control Action Buttons ---
+# --- Manual Input Box & Control Action Buttons ---
 col1, col2 = strl.columns([3, 1])
 with col1:
     text_input = strl.text_input("Type command manually here:", key="manual_text_input", label_visibility="collapsed", placeholder="Type a command...")
@@ -193,6 +210,6 @@ with col2:
         process_command(text_input)
         strl.rerun()
 
-# Native Button used to guarantee safety over standard JS injection
+# Main Interactive Custom Mic Activation Button 
 if strl.button("🎙️ INITIALIZE MIC SYSTEMS", use_container_width=True):
     strl.markdown('<script>startListening();</script>', unsafe_allow_html=True)
