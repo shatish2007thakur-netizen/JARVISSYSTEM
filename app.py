@@ -44,14 +44,13 @@ strl.markdown("""
 
 # Title Header
 strl.markdown('<div class="terminal-title">JARVIS AI ONLINE SYSTEM</div>', unsafe_allow_html=True)
-
 # ================= GEMINI CONFIGURATION =================
 if "GEMINI_API_KEY" in strl.secrets:
     api_key = strl.secrets["GEMINI_API_KEY"]
 else:
     api_key = None
 
-# Caching lagane se Streamlit baar-baar Google par request nahi bhejega
+# Yeh decorator lagane se Streamlit baar-baar Google par request nahi bhejega
 @strl.cache_resource
 def get_ai_client(key):
     if key:
