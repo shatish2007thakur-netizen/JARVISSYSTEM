@@ -51,12 +51,17 @@ if "GEMINI_API_KEY" in strl.secrets:
 else:
     api_key = None
 
-ai_client = None
-if api_key:
-    try:
-        ai_client = genai.Client(api_key=api_key)
-    except Exception as e:
-        ai_client = None
+# Caching lagane se Streamlit baar-baar Google par request nahi bhejega
+@strl.cache_resource
+def get_ai_client(key):
+    if key:
+        try:
+            return genai.Client(api_key=key)
+        except Exception:
+            return None
+    return None
+
+ai_client = get_ai_client(api_key)
 
 # Initialize Session States for Logs and Responses
 if "chat_history" not in strl.session_state:
