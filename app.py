@@ -194,9 +194,15 @@ def process_command(command):
                 strl.session_state.chat_history += f"\n\nJarvis: {reply}"
                 strl.session_state.tts_text = "Apologies Sir, server is busy."
 
-  # ================= VOICE INPUT HANDLER =================
+# ================= VOICE INPUT RECEIVER & HANDLER =================
+# JavaScript se aane wale voice response ko catch karne ke liye setup
+from streamlit_js_eval import streamlit_js_eval
+
+# Browser ke window messaging se text data retrieve karna
+voice_query = None
+
 # Yeh block check karega ki koi nayi voice query aayi hai ya nahi
-if 'voice_query' in locals() and voice_query and voice_query != strl.session_state.get("last_processed_query", ""):
+if voice_query and voice_query != strl.session_state.get("last_processed_query", ""):
     st_status.markdown('<div class="terminal-status">Status: Processing Command...</div>', unsafe_allow_html=True)
     process_command(voice_query)
     strl.rerun()
