@@ -46,8 +46,19 @@ strl.markdown("""
 strl.markdown('<div class="terminal-title">JARVIS AI ONLINE SYSTEM</div>', unsafe_allow_html=True)
 
 # ================= GEMINI CONFIGURATION =================
-# Try to get API key from Streamlit Secrets or Environment Variables
-api_key = strl.secrets.get("GEMINI_API_KEY")
+# Direct secrets se key check karega, bina kisi purani default key ke
+if "GEMINI_API_KEY" in strl.secrets:
+    api_key = strl.secrets["GEMINI_API_KEY"]
+else:
+    api_key = None
+
+try:
+    if api_key:
+        ai_client = genai.Client(api_key=api_key)
+    else:
+        ai_client = None
+except Exception as e:
+    ai_client = None
 
 try:
     ai_client = genai.Client(api_key=api_key)
