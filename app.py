@@ -42,28 +42,21 @@ strl.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Title & Status Headers
+# Title Header
 strl.markdown('<div class="terminal-title">JARVIS AI ONLINE SYSTEM</div>', unsafe_allow_html=True)
 
 # ================= GEMINI CONFIGURATION =================
-# Direct secrets se key check karega, bina kisi purani default key ke
 if "GEMINI_API_KEY" in strl.secrets:
     api_key = strl.secrets["GEMINI_API_KEY"]
 else:
     api_key = None
 
-try:
-    if api_key:
+ai_client = None
+if api_key:
+    try:
         ai_client = genai.Client(api_key=api_key)
-    else:
+    except Exception as e:
         ai_client = None
-except Exception as e:
-    ai_client = None
-
-try:
-    ai_client = genai.Client(api_key=api_key)
-except Exception as e:
-    ai_client = None
 
 # Initialize Session States for Logs and Responses
 if "chat_history" not in strl.session_state:
@@ -72,15 +65,14 @@ if "tts_text" not in strl.session_state:
     strl.session_state.tts_text = "Systems initialized with Gemini AI. I am online, Sir."
 
 # ================= JAVASCRIPT FOR SPEECH & TTS =================
-# This handles Microphone Input and Voice Output directly in the browser!
+# Fixed JS with robust SpeechRecognition triggering
 js_code = f"""
 <script>
     // --- TEXT TO SPEECH (Jarvis Voice) ---
     function speak(text) {{
         if ('speechSynthesis' in window && text !== "") {{
-            window.speechSynthesis.cancel(); // Stop any ongoing speech
+            window.speechSynthesis.cancel(); 
             var msg = new SpeechSynthesisUtterance(text);
-            // Try to find a nice male or clean voice
             var voices = window.speechSynthesis.getVoices();
             if(voices.length > 0) {{
                 msg.voice = voices[0]; 
@@ -90,15 +82,11 @@ js_code = f"""
         }}
     }}
 
-    // Trigger initial welcome speech if any
     var current_tts = `{strl.session_state.tts_text}`;
     if (current_tts !== "") {{
         speak(current_tts);
-        // Clear it so it doesn't repeat on reload
-        window.parent.postMessage({{type: 'streamlit:setComponentValue', value: 'clear_tts'}}, '*');
     }}
 
-    // --- SPEECH RECOGNITION (Mic Input) ---
     function startListening() {{
         var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {{
@@ -109,56 +97,42 @@ js_code = f"""
         var recognition = new SpeechRecognition();
         recognition.lang = 'en-IN';
         recognition.interimResults = false;
-        recognition.maxAlternatives = 1;
-
-        window.parent.postMessage({{type: 'status_update', status: 'Listening... (Speak Now)'}}, '*');
 
         recognition.start();
 
         recognition.onresult = function(event) {{
             var speechToText = event.results[0][0].transcript;
-            // Send the recognized query back to Streamlit
+            // Inject text safely using modern window messaging
+            window.parent.postMessage({{type: 'streamlit:setComponentValue', value: speechToText}}, '*');
+            
+            // Fallback fallback selector injection
             const doc = window.parent.document;
             const textFields = doc.querySelectorAll('textarea[aria-label="voice_input_receiver"]');
             if(textFields.length > 0) {{
                 textFields[0].value = speechToText;
                 textFields[0].dispatchEvent(new Event('input', {{ bubbles: true }}));
-                // Find and click submit if needed, or let Streamlit handle the rerun
             }}
-            window.parent.postMessage({{type: 'speech_result', text: speechToText}}, '*');
-        }};
-
-        recognition.onspeechend = function() {{
-            recognition.stop();
-        }};
-
-        recognition.onerror = function(event) {{
-            window.parent.postMessage({{type: 'speech_error', error: event.error}}, '*');
         }};
     }}
 </script>
 """
 
-# Inject JavaScript helper hiddenly
+# Inject JavaScript
 strl.components.v1.html(js_code, height=0, width=0)
 
-# JS Voice Handler trigger interface via safe HTML button hack for Mic trigger
 st_status = strl.empty()
-st_status.markdown('<div class="terminal-status">Status: Standby. Click "INITIALIZE MIC" to Speak</div>', unsafe_allow_html=True)
-
-# Hidden Text Area to receive voice data from JS browser side
-voice_query = strl.text_area("voice_input_receiver", label_visibility="collapsed", key="hidden_voice_input")
+st_status.markdown('<div class="terminal-status">Status: Standby. Use terminal input below or Initialize Mic</div>', unsafe_allow_html=True)
 
 # Display Terminal logs
 strl.markdown(f'<div class="chat-box">{strl.session_state.chat_history}</div>', unsafe_allow_html=True)
 
 # ================= CORE PROCESSOR =================
 def process_command(command):
-    cmd = command.lower().strip()
-    if not cmd:
+    if not command or strl.session_state.get("last_processed_query") == command:
         return
         
     strl.session_state.chat_history += f"\n\nYou: {command}"
+    cmd = command.lower().strip()
     
     # 1. EXIT COMMANDS
     if "stop" in cmd or "exit" in cmd or "bye jarvis" in cmd:
@@ -167,7 +141,7 @@ def process_command(command):
         strl.session_state.tts_text = reply
         
     # 2. OS/BROWSER CAPABILITIES
-    elif "open google" in cmd or "open d google" in cmd:
+    elif "open google" in cmd:
         reply = "Opening Google, Sir."
         strl.session_state.chat_history += f"\n\nJarvis: {reply}"
         strl.session_state.tts_text = reply
@@ -182,7 +156,7 @@ def process_command(command):
     # 3. GEMINI CORE RESPONSE
     else:
         if not ai_client:
-            reply = "Sir, Gemini API Key core component missing configuration."
+            reply = "Sir, Gemini API Key core component missing configuration. Please check your secrets or environment variables."
             strl.session_state.chat_history += f"\n\nJarvis: {reply}"
             strl.session_state.tts_text = reply
         else:
@@ -198,33 +172,23 @@ def process_command(command):
                 strl.session_state.chat_history += f"\n\nJarvis: {reply}"
                 strl.session_state.tts_text = reply
             except Exception as e:
-                reply = "Sir, I faced an error connecting to the AI core."
+                # Debugging print to terminal console to see the actual error
+                print(f"Gemini API Error: {e}")
+                reply = f"Sir, I faced an error connecting to the AI core. Details: {str(e)[:50]}..."
                 strl.session_state.chat_history += f"\n\nJarvis: {reply}"
                 strl.session_state.tts_text = "Apologies Sir, server error."
 
-# Handle incoming Voice or Text Queries
-if voice_query and voice_query != strl.session_state.get("last_processed_query", ""):
-    st_status.markdown('<div class="terminal-status">Status: Processing Command...</div>', unsafe_allow_html=True)
-    process_command(voice_query)
-    strl.session_state.last_processed_query = voice_query
-    strl.session_state.tts_text = strl.session_state.tts_text # force trigger voice update
-    strl.rerun()
+    strl.session_state.last_processed_query = command
 
-# --- Fallback Input Box & Control Action Buttons ---
+# --- Input Box & Control Action Buttons ---
 col1, col2 = strl.columns([3, 1])
 with col1:
-    text_input = strl.text_input("Type command manually here:", key="manual_text_input", label_visibility="collapsed", placeholder="Type a command or use mic...")
+    text_input = strl.text_input("Type command manually here:", key="manual_text_input", label_visibility="collapsed", placeholder="Type a command...")
 with col2:
     if strl.button("SEND ↵", use_container_width=True) and text_input:
         process_command(text_input)
         strl.rerun()
 
-# Main Interactive Custom Mic Activation Button 
-strl.markdown("""
-    <div style="text-align: center; margin-top: 10px;">
-        <button onclick="startListening()" style="background-color: #2d2d2d; color: #4af626; border: 2px solid #4af626; font-weight: bold; padding: 12px 24px; font-size: 16px; border-radius: 5px; cursor: pointer; width: 100%;">
-            🎙️ INITIALIZE MIC SYSTEMS
-        </button>
-    </div>
-""", unsafe_allow_html=True)
-
+# Native Button used to guarantee safety over standard JS injection
+if strl.button("🎙️ INITIALIZE MIC SYSTEMS", use_container_width=True):
+    strl.markdown('<script>startListening();</script>', unsafe_allow_html=True)
