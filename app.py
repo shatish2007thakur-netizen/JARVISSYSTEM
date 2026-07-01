@@ -48,7 +48,7 @@ strl.markdown('<div class="terminal-title">JARVIS AI ONLINE SYSTEM</div>', unsaf
 # ================= GEMINI CONFIGURATION =================
 # Direct secrets se key check karega, bina kisi purani default key ke
 if "GEMINI_API_KEY" in strl.secrets:
-    api_key = strl.secrets["GEMINI_API_KE"]
+    api_key = strl.secrets["GEMINI_API_KEY"]
 else:
     api_key = None
 
